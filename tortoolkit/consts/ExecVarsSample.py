@@ -16,7 +16,7 @@ except:
         EDIT_SLEEP_SECS = 40
 
         # Telegram Upload Limit (in bytes)
-        TG_UP_LIMIT = 1700000000
+        TG_UP_LIMIT =  2097152000 #1.95GB
 
         # Should force evething uploaded into Document
         FORCE_DOCUMENTS = False
@@ -34,7 +34,7 @@ except:
         #DB_URI = "dbname=tortk user=postgres password=your-pass host=db port=5432"
         
         # The base direcory to which the files will be upload if using RCLONE
-        RCLONE_BASE_DIR = "/"
+        RCLONE_BASE_DIR = "/Team Drive/Film"
 
         # This value will be considered only if Rclone is True - this may be defied now ;)
         # Cuz at least one needs to be Ture at a time either RCLONE or Leech.
