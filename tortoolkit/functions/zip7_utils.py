@@ -59,7 +59,7 @@ async def split_in_zip(path,size=None):
     else:
         return None
 
-async def add_to_zip(path, size = None):
+async def add_to_zip(path, size = None, split = True):
     if os.path.exists(path):
         fname = os.path.basename(path)
         bdir = os.path.dirname(path)
@@ -78,10 +78,10 @@ async def add_to_zip(path, size = None):
             size = int(size/(1024*1024)) - 10 #for safe
 
         total_size = get_size(path)
-        if total_size > size:
-            cmd = f"7z a -tzip '{bdir}/{fname}.zip' '{path}' -v{size}m "
+        if total_size > size and split:
+            cmd = f"7z a -tzip '{bdir}/{fname}.zip' '{path}' -v{size}m s=0b"
         else:
-            cmd = f"7z a -tzip '{bdir}/{fname}.zip' '{path}'"
+            cmd = f"7z a -tzip '{bdir}/{fname}.zip' '{path}' s=0b"
     
         _, err = await cli_call(cmd)
         
@@ -107,7 +107,7 @@ def get_size(start_path = '.'):
 async def extract_archive(path, password=""):
     if os.path.exists(path):
         if os.path.isfile(path):
-            if str(path).endswith((".zip", "7z", "tar", "gzip2", "iso", "wim", "rar")):
+            if str(path).endswith((".zip", "7z", "tar", "gzip2", "iso", "wim", "rar", "tar.gz","tar.bz2")):
                 # check userdata
                 userpath = os.path.join(os.getcwd(), "userdata")
                 if not os.path.exists(userpath):
@@ -120,7 +120,10 @@ async def extract_archive(path, password=""):
                 if not os.path.exists(extpath):
                     os.mkdir(extpath)
 
-                cmd = f"7z e -y '{path}' '-o{extpath}' '-p{password}'"
+                if str(path).endswith(("tar","tar.gz","tar.bz2")):
+                    cmd = f"tar -xvf '{path}' -C '{extpath}' --warning=none"
+                else:
+                    cmd = f"7z e -y '{path}' '-o{extpath}' '-p{password}'"
                 
                 out, err = await cli_call(cmd)
                 

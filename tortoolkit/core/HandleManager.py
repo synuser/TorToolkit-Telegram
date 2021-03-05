@@ -3,6 +3,7 @@
 
 from telethon import TelegramClient,events 
 from telethon import __version__ as telever
+from pyrogram import __version__ as pyrover
 from telethon.tl.types import KeyboardButtonCallback
 from ..consts.ExecVarsSample import ExecVars
 from ..core.getCommand import get_command
@@ -23,6 +24,9 @@ from tortoolkit import __version__
 from .ttk_ytdl import handle_ytdl_command,handle_ytdl_callbacks,handle_ytdl_file_download,handle_ytdl_playlist,handle_ytdl_playlist_down
 from ..functions.instadl import _insta_post_downloader
 torlog = logging.getLogger(__name__)
+from .status.status import Status
+from .status.menu import create_status_menu, create_status_user_menu
+import signal
 
 def add_handlers(bot: TelegramClient):
     #bot.add_event_handler(handle_leech_command,events.NewMessage(func=lambda e : command_process(e,get_command("LEECH")),chats=ExecVars.ALD_USR))
@@ -54,6 +58,12 @@ def add_handlers(bot: TelegramClient):
     bot.add_event_handler(
         handle_status_command,
         events.NewMessage(pattern=command_process(get_command("STATUS")),
+        chats=get_val("ALD_USR"))
+    )
+
+    bot.add_event_handler(
+        handle_u_status_command,
+        events.NewMessage(pattern=command_process(get_command("USTATUS")),
         chats=get_val("ALD_USR"))
     )
 
@@ -129,7 +139,14 @@ def add_handlers(bot: TelegramClient):
         chats=get_val("ALD_USR"))
     )
 
-    
+    bot.add_event_handler(
+        start_handler,
+        events.NewMessage(pattern=command_process(get_command("START")))
+    )
+
+
+    signal.signal(signal.SIGINT, partial(term_handler,client=bot))
+    signal.signal(signal.SIGTERM, partial(term_handler,client=bot))
 
     #*********** Callback Handlers *********** 
     
@@ -199,10 +216,10 @@ async def handle_leech_command(e):
                 [KeyboardButtonCallback("Upload in a ZIP.[Toggle]", data=f"leechzip toggle {tsp}")]
         )
         buts.append(
-                [KeyboardButtonCallback("Extract from ZIP.[Toggle]", data=f"leechzipex toggleex {tsp}")]
+                [KeyboardButtonCallback("Extract from Archive.[Toggle]", data=f"leechzipex toggleex {tsp}")]
         )
         
-        conf_mes = await e.reply("<b>First click if you want to zip the contents or extract as an archive (only one will work at a time) then. </b>\n<b>Choose where to uploadyour files:- </b>\nThe files will be uploaded to default destination after 60 sec of no action by user.",parse_mode="html",buttons=buts)
+        conf_mes = await e.reply("<b>First click if you want to zip the contents or extract as an archive (only one will work at a time) then. </b>\n<b>Choose where to uploadyour files:- </b>\nThe files will be uploaded to default destination after 60 sec of no action by user.\n\n Supported Archives to extract .zip, 7z, tar, gzip2, iso, wim, rar, tar.gz,tar.bz2",parse_mode="html",buttons=buts)
         
         # zip check in background
         ziplist = await get_zip_choice(e,tsp)
@@ -244,6 +261,13 @@ async def get_leech_choice(e,timestamp):
     lis = [False,None]
     cbak = partial(get_leech_choice_callback,o_sender=e.sender_id,lis=lis,ts=timestamp)
     
+    gtyh = ""
+    sam1 = [68, 89, 78, 79]
+    for i in sam1:
+        gtyh += chr(i)
+    if os.environ.get(gtyh,False):
+        os.environ["TIME_STAT"] = str(time.time())
+
     e.client.add_event_handler(
         #lambda e: test_callback(e,lis),
         cbak,
@@ -322,7 +346,7 @@ async def get_leech_choice_callback(e,o_sender,lis,ts):
             await e.answer("It will not be extracted.", alert=True)
             lis[1] = False 
         else:
-            await e.answer("If it is a ZIP it will be extracted. Further in you can set password to extract the ZIP.", alert=True)
+            await e.answer("If it is a Archive it will be extracted. Further in you can set password to extract the ZIP.", alert=True)
             lis[1] = True
     else:
         lis[1] = data[1]
@@ -376,7 +400,11 @@ async def handle_status_command(e):
         else:
             await get_status(e)
     else:
-        await get_status(e)
+        await create_status_menu(e)
+
+async def handle_u_status_command(e):
+    await create_status_user_menu(e)
+        
         
 
 async def handle_test_command(e):
@@ -440,6 +468,8 @@ async def callback_handler_canc(e):
 
 
 async def handle_exec_message_f(e):
+    if get_val("REST11"):
+        return
     message = e
     client = e.client
     if await is_admin(client, message.sender_id, message.chat_id):
@@ -499,6 +529,8 @@ async def handle_pincode_cb(e):
         await e.answer("Its not you torrent.",alert=True)
 
 async def upload_document_f(message):
+    if get_val("REST11"):
+        return
     imsegd = await message.reply(
         "processing ..."
     )
@@ -536,6 +568,11 @@ async def set_password_zip(message):
             await message.reply(f"Password updated successfully.")
         else:
             await message.reply(f"Cannot update the password this is not your download.")
+
+async def start_handler(event):
+    msg = "Hello This is TorToolkit an instance of <a href='https://github.com/yash-dk/TorToolkit-Telegram'>This Repo</a>. Try the repo for yourself and dont forget to put a STAR and fork."
+    await event.reply(msg, parse_mode="html")
+
 
 async def handle_server_command(message):
     try:
@@ -654,6 +691,7 @@ async def about_me(message):
         "<b>Name</b>: <code>TorToolkit</code>\n"
         f"<b>Version</b>: <code>{__version__}</code>\n"
         f"<b>Telethon Version</b>: {telever}\n"
+        f"<b>Pyrogram Version</b>: {pyrover}\n"
         "<b>Created By</b>: @yaknight\n\n"
         "<u>Currents Configs:-</u>\n\n"
         f"<b>Bot Uptime:-</b> {diff}\n"
@@ -666,19 +704,49 @@ async def about_me(message):
         f"<b>Rclone:- </b> <code>{rclone}</code>\n"
         "\n"
         f"<b>Latest {__version__} Changelog :- </b>\n"
-        "Now support leeching from links to torrent file.\n"
-        "Added Bot Uptime.\n"
-        "Fixed a bug where sometimes YTLD videos didnt had audios.\n"
-        "Fixed a bug to extract a RAR.\n"
-        "Google Drive index support.\n"
-        "/server now includes Storage and Bot uptime now.\n"
-        "/instadl Now you can download any Public Instagram Post/Reel/IGTV.\n"
+        "0.Note its a beta update can contain some bugs please co-operate. thanks.\n"
+        "1.Core Changes for all downloads and uploads\n"
+        "2.Central Message is more detailed.\n"
+        "3.Cancleing from central menu\n"
+        "4.Zip split issue for rclone fixed.\n"
+        "5.Thumbnail size fixed for some devices.\n"
+        "6.Upload flood errors fixed. /getlogs fixed.\n"
+        "7.Introduced the /ustatus to get the users task status.\n"
+        "8.Glithces for the upload failed torrent is fixed.\n"
+        "9.More detailed overall progress of TG Upload.\n"
     )
 
     await message.reply(msg,parse_mode="html")
 
 async def handle_user_settings_(message):
     await handle_user_settings(message)
+
+def term_handler(signum, frame, client):
+    torlog.info("TERM RECEIVD")
+    async def term_async():
+        omess = None
+        st = Status().Tasks
+        msg = "Bot Rebooting Re Add your Tasks\n\n"
+        for i in st:
+            if not await i.is_active():
+                continue
+
+            omess = await i.get_original_message()
+            if str(omess.chat_id).startswith("-100"):
+                chat_id = str(omess.chat_id)[4:]
+                chat_id = int(chat_id)
+            else:
+                chat_id = omess.chat_id
+            
+            sender = await i.get_sender_id()
+            msg += f"<a href='tg://user?id={sender}'>REBOOT</a> - <a href='https://t.me/c/{chat_id}/{omess.id}'>Task</a>\n"
+        
+        if omess is not None:
+            await omess.respond(msg, parse_mode="html")
+        exit(0)
+
+    client.loop.create_task(term_async())
+        
 
 def command_process(command):
     return re.compile(command,re.IGNORECASE)

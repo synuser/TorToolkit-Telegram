@@ -14,3 +14,5 @@ class Commands:
     SERVER = "server"
     USERSETTINGS = "usetting"
     INSTADL = "instadl"
+    START = "start"
+    USTATUS = "ustatus"

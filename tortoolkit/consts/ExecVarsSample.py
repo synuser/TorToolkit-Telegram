@@ -2,13 +2,17 @@ try:
     from .ExecVars import ExecVars
 except:
     class ExecVars:
-        # TODO optimize for vps use fully - currently only heroku is focused
-        # Set true if its VPS [currently not fully working]
+        # Set true if its VPS
         IS_VPS = False
+        
         API_HASH = ""
         API_ID = 0
         BOT_TOKEN = ""
         BASE_URL_OF_BOT = ""
+
+        # Edit the server port if you want to keep it default though.
+        SERVPORT = 80
+
         # ALLOWED USERS [ids of user or supergroup] seperate by commas
         ALD_USR = []
         
@@ -62,6 +66,12 @@ except:
         # Max size of the torrent allowed
         MAX_TORRENT_SIZE = 10
 
+        # Set this to your bot username if you want to add the username of your bot at the end of the commands like
+        # /leech@TorToolkitBot so the value will be @TorToolkitBot
+        BOT_CMD_POSTFIX = "" 
+
+        STATUS_DEL_TOUT = 20
+
         # This is to stop someone from abusing the system by imposing the limit
         # [<GBs of total torrent sapce>, <Number of youtube videos allowed to download>, <Number of youtube playlists allowed to download>]
         USER_CAP_ENABLE = False
@@ -74,6 +84,7 @@ except:
         FORCE_DOCS_USER = False
         FAST_UPLOAD = True
         METAINFO_BOT = False
+        EXPRESS_UPLOAD = True
         
 
 
