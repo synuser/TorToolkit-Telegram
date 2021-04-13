@@ -1,3 +1,4 @@
+# [Join Tortoolkit Group for DEMO](https://t.me/TorToolKit)
 # TorToolkit Telegram
 So basically Tortoolkit is aimed to be the most versatile torrent leecher and Youtube-DL bot for telegram. This bot is highly customizable and to customize this bot you don't need to restart the bot every time. 
 The bot gets started with minimum variables and others can be set as and when needed using the /settings.
@@ -163,6 +164,10 @@ Steps:-
   - Default Value :- `dbname=tortk user=postgres password=your-pass host=127.0.0.1 port=5432`
   - Use :- Used to connect to DB. DB is used for many stuff in this bot. 
 
+- `OWNER_ID` = 
+  - Values :- Owner's ID
+  - Default Value :- `0`
+  - Use :- Used to restrict use of certain stuff to owner only. 
 ### ***Optional Vars***
 - `GD_INDEX_URL`
   - Values :- Base URL of the index that you are using. (Now that you should include the directory also in URL if you have set `RCLONE_BASE_DIR`). (Dosen't matter if a slash is at the end or not)
@@ -249,8 +254,10 @@ Steps:-
     about - About the bot
     status - Status of all the downloads
     server - Get server status
-    usettings - User Settings
+    usettings - User Settings (private also)
     instadl - Instagram Post/Reel/IGTV download
+    setthumb - Set the thumbnail
+    clearthumb - Clear the thumbnail
     settings - Settings of the bot ⚠️ Admin Only
     pauseall - Pause all torrents⚠️ Admin Only
     resumeall - Resume all torrents⚠️ Admin Only
@@ -259,5 +266,7 @@ Steps:-
 
 # Credits
 [Yash-DK](https://github.com/yash-dk)
+
 [Lonami](https://github.com/LonamiWebs/Telethon/) for awesome Telethon
+
 [All the Libraries owner](https://github.com/yash-dk/TorToolkit-Telegram/blob/master/requirements.txt)

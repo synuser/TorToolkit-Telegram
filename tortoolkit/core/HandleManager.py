@@ -27,6 +27,7 @@ torlog = logging.getLogger(__name__)
 from .status.status import Status
 from .status.menu import create_status_menu, create_status_user_menu
 import signal
+from PIL import Image
 
 def add_handlers(bot: TelegramClient):
     #bot.add_event_handler(handle_leech_command,events.NewMessage(func=lambda e : command_process(e,get_command("LEECH")),chats=ExecVars.ALD_USR))
@@ -129,8 +130,7 @@ def add_handlers(bot: TelegramClient):
 
     bot.add_event_handler(
         handle_user_settings_,
-        events.NewMessage(pattern=command_process(get_command("USERSETTINGS")),
-        chats=get_val("ALD_USR"))
+        events.NewMessage(pattern=command_process(get_command("USERSETTINGS")))
     )
 
     bot.add_event_handler(
@@ -142,6 +142,18 @@ def add_handlers(bot: TelegramClient):
     bot.add_event_handler(
         start_handler,
         events.NewMessage(pattern=command_process(get_command("START")))
+    )
+
+    bot.add_event_handler(
+        clear_thumb_cmd,
+        events.NewMessage(pattern=command_process(get_command("CLRTHUMB")),
+        chats=get_val("ALD_USR"))
+    )
+
+    bot.add_event_handler(
+        set_thumb_cmd,
+        events.NewMessage(pattern=command_process(get_command("SETTHUMB")),
+        chats=get_val("ALD_USR"))
     )
 
 
@@ -198,7 +210,6 @@ def add_handlers(bot: TelegramClient):
 #*********** Handlers Below ***********
 
 async def handle_leech_command(e):
-
     if not e.is_reply:
         await e.reply("Reply to a link or magnet")
     else:
@@ -219,7 +230,7 @@ async def handle_leech_command(e):
                 [KeyboardButtonCallback("Extract from Archive.[Toggle]", data=f"leechzipex toggleex {tsp}")]
         )
         
-        conf_mes = await e.reply("<b>First click if you want to zip the contents or extract as an archive (only one will work at a time) then. </b>\n<b>Choose where to uploadyour files:- </b>\nThe files will be uploaded to default destination after 60 sec of no action by user.\n\n Supported Archives to extract .zip, 7z, tar, gzip2, iso, wim, rar, tar.gz,tar.bz2",parse_mode="html",buttons=buts)
+        conf_mes = await e.reply(f"<b>First click if you want to zip the contents or extract as an archive (only one will work at a time) then. </b>\n<b>Choose where to uploadyour files:- </b>\nThe files will be uploaded to default destination after {get_val('DEFAULT_TIMEOUT')} sec of no action by user.\n\n Supported Archives to extract .zip, 7z, tar, gzip2, iso, wim, rar, tar.gz,tar.bz2",parse_mode="html",buttons=buts)
         
         # zip check in background
         ziplist = await get_zip_choice(e,tsp)
@@ -472,7 +483,7 @@ async def handle_exec_message_f(e):
         return
     message = e
     client = e.client
-    if await is_admin(client, message.sender_id, message.chat_id):
+    if await is_admin(client, message.sender_id, message.chat_id, force_owner=True):
         PROCESS_RUN_TIME = 100
         cmd = message.text.split(" ", maxsplit=1)[1]
 
@@ -480,7 +491,6 @@ async def handle_exec_message_f(e):
         if message.is_reply:
             reply_to_id = message.reply_to_msg_id
 
-        start_time = time.time() + PROCESS_RUN_TIME
         process = await aio.create_subprocess_shell(
             cmd,
             stdout=aio.subprocess.PIPE,
@@ -511,6 +521,8 @@ async def handle_exec_message_f(e):
             await message.delete()
         else:
             await message.reply(OUTPUT)
+    else:
+        await message.reply("Only for owner")
 
 async def handle_pincode_cb(e):
     data = e.data.decode("UTF-8")
@@ -535,7 +547,7 @@ async def upload_document_f(message):
         "processing ..."
     )
     imsegd = await message.client.get_messages(message.chat_id,ids=imsegd.id)
-    if await is_admin(message.client, message.sender_id, message.chat_id):
+    if await is_admin(message.client, message.sender_id, message.chat_id, force_owner=True):
         if " " in message.text:
             recvd_command, local_file_name = message.text.split(" ", 1)
             recvd_response = await upload_a_file(
@@ -545,10 +557,12 @@ async def upload_document_f(message):
                 upload_db
             )
             #torlog.info(recvd_response)
+    else:
+        await message.reply("Only for owner")
     await imsegd.delete()
 
 async def get_logs_f(e):
-    if await is_admin(e.client,e.sender_id,e.chat_id):
+    if await is_admin(e.client,e.sender_id,e.chat_id, force_owner=True):
         e.text += " torlog.txt"
         await upload_document_f(e)
     else:
@@ -704,21 +718,57 @@ async def about_me(message):
         f"<b>Rclone:- </b> <code>{rclone}</code>\n"
         "\n"
         f"<b>Latest {__version__} Changelog :- </b>\n"
-        "0.Note its a beta update can contain some bugs please co-operate. thanks.\n"
-        "1.Core Changes for all downloads and uploads\n"
-        "2.Central Message is more detailed.\n"
-        "3.Cancleing from central menu\n"
-        "4.Zip split issue for rclone fixed.\n"
-        "5.Thumbnail size fixed for some devices.\n"
-        "6.Upload flood errors fixed. /getlogs fixed.\n"
-        "7.Introduced the /ustatus to get the users task status.\n"
-        "8.Glithces for the upload failed torrent is fixed.\n"
-        "9.More detailed overall progress of TG Upload.\n"
+        "1.Dead Torrent Will be timed out and removed.\n"
+        "2.Added /setthumb and /clearthumb.\n"
+        "3.Restrict Stuff to Owner.\n"
     )
 
     await message.reply(msg,parse_mode="html")
 
+
+async def set_thumb_cmd(e):
+    thumb_msg = await e.get_reply_message()
+    if thumb_msg is None:
+        await e.reply("Reply to a photo or photo as a document.")
+        return
+    
+    if thumb_msg.document is not None or thumb_msg.photo is not None:
+        value = await thumb_msg.download_media()
+    else:
+        await e.reply("Reply to a photo or photo as a document.")
+        return
+
+    try:
+        im = Image.open(value)
+        im.convert("RGB").save(value,"JPEG")
+        im = Image.open(value)
+        im.thumbnail((320,320), Image.ANTIALIAS)
+        im.save(value,"JPEG")
+        with open(value,"rb") as fi:
+            data = fi.read()
+            user_db.set_thumbnail(data, e.sender_id)
+        os.remove(value)
+    except Exception:
+        torlog.exception("Set Thumb")
+        await e.reply("Errored in setting thumbnail.")
+        return
+    
+    try:
+        os.remove(value)
+    except:pass
+
+    user_db.set_var("DISABLE_THUMBNAIL",False, str(e.sender_id))
+    await e.reply("Thumbnail set. try using /usettings to get more control. Can be used in private too.")
+
+async def clear_thumb_cmd(e):
+    user_db.set_var("DISABLE_THUMBNAIL",True, str(e.sender_id))
+    await e.reply("Thumbnail disabled. Try using /usettings to get more control. Can be used in private too.")
+
 async def handle_user_settings_(message):
+    if not message.sender_id in get_val("ALD_USR"):
+        if not get_val("USETTINGS_IN_PRIVATE") and message.is_private:
+            return
+
     await handle_user_settings(message)
 
 def term_handler(signum, frame, client):

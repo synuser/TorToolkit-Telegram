@@ -3,8 +3,11 @@
 
 import re,os,shutil,time, aiohttp
 from telethon.tl import types
-import logging, os, shutil
+import logging, shutil
+import math, json
+import urllib.parse
 import asyncio as aio
+from bs4 import BeautifulSoup
 from . import QBittorrentWrap
 from . import ariatools
 from .tele_upload import upload_handel
@@ -13,6 +16,7 @@ from .zip7_utils import add_to_zip, extract_archive
 from ..core.getVars import get_val
 from ..core.status.status import ARTask
 from ..core.status.upload import TGUploadTask
+from ..functions.Human_Format import human_readable_bytes
 
 #logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("telethon").setLevel(logging.WARNING)
@@ -58,8 +62,6 @@ def get_entities(msg):
 async def check_link(msg,rclone=False,is_zip=False, extract=False):
     # here moslty rmess = Reply message which the bot uses to update
     # omess = original message from the sender user 
-    urls = None
-    print("here2")
     omess = msg
     msg = await msg.get_reply_message()
 
@@ -123,7 +125,7 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                         torlog.exception("Exception in torrent file")
                     
                     await ul_task.set_inactive()
-                    await print_files(omess,rdict,dl_task.hash)
+                    await print_files(omess,rdict,dl_task.hash, path = dl_path)
                     torlog.info("Here are the fiels uploaded {}".format(rdict))
                     await QBittorrentWrap.delete_this(dl_task.hash)
                 else:
@@ -131,6 +133,9 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                     if res is None:
                         await msg.reply("<b>UPLOAD TO DRIVE FAILED CHECK LOGS</b>",parse_mode="html")
                     await QBittorrentWrap.delete_this(dl_task.hash)
+            
+            else:
+                await errored_message(omess, rmess)
 
             await clear_stuff(path)
             await clear_stuff(dl_path)
@@ -184,7 +189,7 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                         torlog.exception("Exception in magnet")
                     
                     await ul_task.set_inactive()
-                    await print_files(omess,rdict,dl_task.hash)
+                    await print_files(omess,rdict,dl_task.hash, path = dl_path)
                     
                     torlog.info("Here are the files to be uploaded {}".format(rdict))
                     await QBittorrentWrap.delete_this(dl_task.hash)
@@ -194,6 +199,8 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                     if res is None:
                         await msg.reply("<b>UPLOAD TO DRIVE FAILED CHECK LOGS</b>",parse_mode="html")
                     await QBittorrentWrap.delete_this(dl_task.hash)
+            else:
+                await errored_message(omess, rmess)
             
             await clear_stuff(dl_path)
 
@@ -250,7 +257,7 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                         torlog.exception("Exception in torrent link")
                     
                     await ul_task.set_inactive()
-                    await print_files(omess,rdict,dl_task.hash)
+                    await print_files(omess,rdict,dl_task.hash, path = dl_path)
                     
                     torlog.info("Here are the fiels uploaded {}".format(rdict))
                     await QBittorrentWrap.delete_this(dl_task.hash)
@@ -259,6 +266,8 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                     if res is None:
                         await msg.reply("<b>UPLOAD TO DRIVE FAILED CHECK LOGS</b>",parse_mode="html")
                     await QBittorrentWrap.delete_this(dl_task.hash)
+            else:
+                await errored_message(omess, rmess)
 
             await clear_stuff(path)
             await clear_stuff(dl_path)
@@ -267,9 +276,101 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
         else:
             # url = get_entities(msg)
             # currently discontinuing the depending on the entities as its eratic
+            urls = msg.raw_text
             url = None
-            torlog.info("Downloading Urls")
-            rmsg = await omess.reply("Processing the link.")
+            torlog.info("The aria2 Downloading:\n{}".format(urls))
+            rmsg = await omess.reply("**Processing the link...**")
+            await aio.sleep(1)
+            # Starting directlink generator... 
+            
+            # A mention https://github.com/yash-dk/TorToolkit-Telegram/pull/42 [professor-21]
+            # For initial contibution of ZippyShare and Mediafire. 
+            
+            #Mediafire
+            if 'mediafire.com' in urls:
+                await rmsg.edit("`Generating mediafire link.`")
+                await aio.sleep(2)
+                try:
+                    link = re.findall(r'\bhttps?://.*mediafire\.com\S+', urls)[0]
+                    async with aiohttp.ClientSession() as ttksess:
+                        resp = await ttksess.get(link)
+                        restext = await resp.text()
+                    
+                    page = BeautifulSoup(restext, 'lxml')
+                    info = page.find('a', {'aria-label': 'Download file'})
+                    url = info.get('href')
+                except:
+                    await omess.reply("**No mediafire link found.**")
+                
+                
+            #Zippyshare
+            elif  'zippyshare.com' in urls:
+                await rmsg.edit("`Generating zippyshare link.`")
+                await aio.sleep(2)
+                #Zippyshare fix directlink generator for ttk by @yourtulloh based on:
+                #Zippyshare up-to-date plugin from https://github.com/UsergeTeam/Userge-Plugins/blob/master/plugins/zippyshare.py
+                #Thanks to all contributors @aryanvikash, rking32, @BianSepang
+                tulloh = r'https://www(\d{1,3}).zippyshare.com/v/(\w{8})/file.html'
+                regex_result = (
+                    r'var a = (\d{6});\s+var b = (\d{6});\s+document\.getElementById'
+                    r'\(\'dlbutton\'\).omg = "f";\s+if \(document.getElementById\(\''
+                    r'dlbutton\'\).omg != \'f\'\) {\s+a = Math.ceil\(a/3\);\s+} else'
+                    r' {\s+a = Math.floor\(a/3\);\s+}\s+document.getElementById\(\'d'
+                    r'lbutton\'\).href = "/d/[a-zA-Z\d]{8}/\"\+\(a \+ \d{6}%b\)\+"/('
+                    r'[\w%-.]+)";'
+                )
+                
+                match = re.match(tulloh, urls)
+                if not match:
+                    await omess.reply("**Invalid URL:**\n" + str(urls))
+                
+                server, id_ = match.group(1), match.group(2)
+                async with aiohttp.ClientSession() as ttksess:
+                    resp = await ttksess.get(urls)
+                    restext = await resp.text()
+                    
+                match = re.search(regex_result, restext, re.DOTALL)
+                if not match:
+                    await omess.reply("**Invalid response, try again!**")
+                
+                val_1 = int(match.group(1))
+                val_2 = math.floor(val_1 / 3)
+                val_3 = int(match.group(2))
+                val = val_1 + val_2 % val_3
+                name = match.group(3)
+                url = "https://www{}.zippyshare.com/d/{}/{}/{}".format(server, id_, val, name)
+                
+           #yadisk
+            elif 'yadi.sk' in urls or 'disk.yandex.com' in urls:
+                await rmsg.edit("`Generating yadisk link.`")
+                await aio.sleep(2)
+                try:
+                    link = re.findall(r'\b(https?://.*(yadi|disk)\.(sk|yandex)*(|com)\S+)', urls)[0][0]
+                    print(link)
+                except:
+                    await omess.reply("**No yadisk link found.**")
+                api = 'https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key={}'
+                try:
+                    async with aiohttp.ClientSession() as ttksess:
+                        resp = await ttksess.get(api.format(link))
+                        restext = await resp.json()
+                        url = restext['href']
+                    
+                except:
+                    torlog.exception("Ayee jooo")
+                    await omess.reply("**404 File Not Found** or \n**Download limit reached.**")
+
+            # End directlink generator.
+            re_name = None
+            try:
+                if " "  in omess.raw_text:
+                    cmd = omess.raw_text.split(" ", 1)[-1]
+                    if len(cmd) > 0:
+                        re_name = cmd
+                    else:
+                        torlog.info(f"This is not a valid name for renaming:= {omess.raw_text}")
+            except:
+                torlog.exception("Wronged in rename detect")
             
             # weird stuff had to refect message
             path = None
@@ -280,6 +381,13 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                 stat, dl_task = await ariatools.aria_dl(url,"",rmsg,omess)
             if isinstance(dl_task,ARTask) and stat:
                 path = await dl_task.get_path()
+                if re_name:
+                    try:
+                        rename_path = os.path.join(os.path.dirname(path), re_name)
+                        os.rename(path, rename_path)
+                        path = rename_path
+                    except:
+                        torlog.warning("Wrong in renaming the file.")
 
                 if extract:
                     newpath = await handle_ext_zip(path, rmsg, omess)
@@ -303,7 +411,7 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
                         torlog.exception("Exception in Direct links.")
                     
                     await ul_task.set_inactive()
-                    await print_files(omess,rdict)
+                    await print_files(omess,rdict, path = path)
                     torlog.info("Here are the files to be uploaded {}".format(rdict))
                 else:
                     res = await rclone_driver(path,rmsg, omess, dl_task)
@@ -312,6 +420,7 @@ async def check_link(msg,rclone=False,is_zip=False, extract=False):
             elif stat is False:
                 reason = await dl_task.get_error()
                 await rmsg.edit("Failed to download this file.\n"+str(reason))
+                await errored_message(omess, rmsg)
             
             await clear_stuff(path)    
     return None
@@ -411,10 +520,29 @@ async def handle_ext_zip(path, rmess, omess):
             return ext_path
     
 
+async def errored_message(e, reason):
+    msg = f"<a href='tg://user?id={e.sender_id}'>Done</a>\nYour Download Failed."
+    if reason is not None:
+        await reason.reply(msg, parse_mode="html")
+    else:
+        await e.reply(msg, parse_mode="html")
 
-
-async def print_files(e,files,thash=None):
+async def print_files(e,files,thash=None, path = None):
     msg = f"<a href='tg://user?id={e.sender_id}'>Done</a>\n#uploads\n"
+
+    if path is not None:
+        size = 0
+        try:
+            if os.path.isdir(path):
+                size = get_size_fl(path)
+            else:
+                size = os.path.getsize(path)
+        except:
+            torlog.warning("Size Calculation Failed.")
+        
+        size = human_readable_bytes(size)
+        msg += f"Uploaded Size:- {str(size)}\n\n"
+    
     if len(files) == 0:
         return
     
@@ -511,3 +639,14 @@ async def cancel_torrent(hashid, is_aria = False):
         await QBittorrentWrap.deregister_torrent(hashid)
     else:
         await ariatools.remove_dl(hashid)
+
+def get_size_fl(start_path = '.'):
+    total_size = 0
+    for dirpath, _, filenames in os.walk(start_path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # skip if it is symbolic link
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+
+    return total_size
